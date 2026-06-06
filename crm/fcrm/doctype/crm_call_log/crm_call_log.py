@@ -42,7 +42,7 @@ class CRMCallLog(Document):
 			"Queued",
 			"Canceled",
 		]
-		telephony_medium: DF.Literal["", "Manual", "Twilio", "Exotel"]
+		telephony_medium: DF.Literal["", "Manual", "Twilio", "Exotel", "Vobiz"]
 		to: DF.Data
 		type: DF.Literal["Incoming", "Outgoing"]
 	# end: auto-generated types
@@ -145,6 +145,43 @@ class CRMCallLog(Document):
 				f"/api/method/crm.integrations.api.get_recording_url?call_log_name={d.get('name')}"
 			)
 		return d
+
+	def on_update(self):
+		self.update_linked_lead()
+
+	def after_insert(self):
+		self.update_linked_lead()
+
+	def update_linked_lead(self):
+		lead_name = self.get_linked_lead_name()
+		if lead_name and frappe.db.exists("CRM Lead", lead_name):
+			lead = frappe.get_doc("CRM Lead", lead_name)
+			
+			# Map Direction
+			lead.direction = "inbound" if self.type == "Incoming" else "outbound"
+			
+			# Map Date and Time
+			if self.start_time:
+				dt = frappe.utils.to_datetime(self.start_time)
+				if dt:
+					lead.call_date = dt.strftime("%Y-%m-%d")
+					lead.call_time = dt.strftime("%H:%M:%S")
+					
+			# Map Duration
+			if self.duration is not None:
+				lead.call_duration = int(self.duration)
+				
+			# Save Lead
+			lead.save(ignore_permissions=True)
+
+	def get_linked_lead_name(self):
+		if self.reference_doctype == "CRM Lead" and self.reference_docname:
+			return self.reference_docname
+		for link in getattr(self, "links", []):
+			if link.link_doctype == "CRM Lead" and link.link_name:
+				return link.link_name
+		return None
+
 
 
 def parse_call_log(call):

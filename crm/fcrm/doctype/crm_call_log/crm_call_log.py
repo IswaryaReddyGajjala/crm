@@ -162,10 +162,15 @@ class CRMCallLog(Document):
 			
 			# Map Date and Time
 			if self.start_time:
+				import pytz
 				dt = frappe.utils.to_datetime(self.start_time)
 				if dt:
-					lead.call_date = dt.strftime("%Y-%m-%d")
-					lead.call_time = dt.strftime("%H:%M:%S")
+					if dt.tzinfo is None:
+						dt = pytz.utc.localize(dt)
+					system_tz = pytz.timezone(frappe.utils.get_system_timezone())
+					local_dt = dt.astimezone(system_tz)
+					lead.call_date = local_dt.strftime("%Y-%m-%d")
+					lead.call_time = local_dt.strftime("%H:%M:%S")
 					
 			# Map Duration
 			if self.duration is not None:
@@ -177,9 +182,34 @@ class CRMCallLog(Document):
 	def get_linked_lead_name(self):
 		if self.reference_doctype == "CRM Lead" and self.reference_docname:
 			return self.reference_docname
+		
+		# If linked to a CRM Deal, resolve to its lead
+		if self.reference_doctype == "CRM Deal" and self.reference_docname:
+			lead_name = frappe.db.get_value("CRM Deal", self.reference_docname, "lead")
+			if lead_name:
+				return lead_name
+				
 		for link in getattr(self, "links", []):
 			if link.link_doctype == "CRM Lead" and link.link_name:
 				return link.link_name
+			if link.link_doctype == "CRM Deal" and link.link_name:
+				lead_name = frappe.db.get_value("CRM Deal", link.link_name, "lead")
+				if lead_name:
+					return lead_name
+
+		# Fallback: search by phone number of the call log
+		phone = self.to if self.type == "Outgoing" else self.get("from")
+		if phone:
+			cleaned_phone = (phone or "").replace("+", "").replace("-", "").replace(" ", "").replace("(", "").replace(")", "")
+			if cleaned_phone and len(cleaned_phone) >= 5:
+				lead_name = frappe.db.get_value(
+					"CRM Lead",
+					{"mobile_no": ["like", f"%{cleaned_phone}%"], "converted": 0},
+					"name",
+					order_by="modified desc"
+				)
+				if lead_name:
+					return lead_name
 		return None
 
 

@@ -5,7 +5,6 @@ from pymongo import MongoClient
 
 @frappe.whitelist()
 def sync_telephony_call_logs():
-	"""Sync call logs from MongoDB aiprof_telephony database to Frappe CRM."""
 	mongo_uri = os.environ.get(
 		"MONGO_URI", 
 		"mongodb://myAdminUser:Hit%40042@172.17.0.1:27017/aiprof_telephony?authSource=admin"
@@ -79,13 +78,25 @@ def sync_telephony_call_logs():
 			# Get/Create Lead and update call properties if not already updated in this run
 			lead_doc = None
 			is_new_lead = False
+			active_lead_name = None
 			
 			# Only attempt to create/update Lead if the phone number consists of digits
 			contact_number_cleaned = (contact_number or "").replace("+", "").replace("-", "").replace(" ", "").replace("(", "").replace(")", "")
 			is_valid_phone = contact_number_cleaned.isdigit() and len(contact_number_cleaned) >= 5
 			
 			if is_valid_phone:
-				if target_doctype == "CRM Lead":
+				# Check if there is an active unconverted lead for this phone number
+				active_lead_name = frappe.db.get_value(
+					"CRM Lead",
+					{"mobile_no": ["like", f"%{contact_number_cleaned}%"], "converted": 0},
+					"name",
+					order_by="modified desc"
+				)
+				
+				if active_lead_name:
+					if active_lead_name not in updated_leads:
+						lead_doc = frappe.get_doc("CRM Lead", active_lead_name)
+				elif target_doctype == "CRM Lead":
 					if target_docname not in updated_leads:
 						lead_doc = frappe.get_doc("CRM Lead", target_docname)
 				elif not target_doctype and contact_number:
@@ -112,10 +123,15 @@ def sync_telephony_call_logs():
 				# Map Date and Time
 				start_time_raw = (log.get("timestamps") or {}).get("start")
 				if start_time_raw:
+					import pytz
 					dt = frappe.utils.to_datetime(start_time_raw)
 					if dt:
-						lead_doc.call_date = dt.strftime("%Y-%m-%d")
-						lead_doc.call_time = dt.strftime("%H:%M:%S")
+						if dt.tzinfo is None:
+							dt = pytz.utc.localize(dt)
+						system_tz = pytz.timezone(frappe.utils.get_system_timezone())
+						local_dt = dt.astimezone(system_tz)
+						lead_doc.call_date = local_dt.strftime("%Y-%m-%d")
+						lead_doc.call_time = local_dt.strftime("%H:%M:%S")
 						
 				# Map Duration
 				duration_val = (log.get("timestamps") or {}).get("duration_sec")
@@ -135,7 +151,7 @@ def sync_telephony_call_logs():
 				else:
 					lead_doc.save(ignore_permissions=True)
 					
-				updated_leads.add(target_docname)
+				updated_leads.add(lead_doc.name)
 	
 			# Create and insert call log if it does not already exist
 			if not call_log_exists:
@@ -177,6 +193,9 @@ def sync_telephony_call_logs():
 					call_log.link_with_reference_doc(target_doctype, target_docname)
 					call_log.reference_doctype = target_doctype
 					call_log.reference_docname = target_docname
+					
+				if active_lead_name and active_lead_name != target_docname:
+					call_log.link_with_reference_doc("CRM Lead", active_lead_name)
 					
 				call_log.insert(ignore_permissions=True)
 				synced_count += 1

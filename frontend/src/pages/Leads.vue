@@ -295,11 +295,11 @@ import { formatDate, timeAgo, website, formatTime } from '@/utils'
 import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
 import { Avatar, Tooltip, Dropdown } from 'frappe-ui'
 import { useRoute } from 'vue-router'
-import { ref, computed, reactive, h } from 'vue'
+import { ref, computed, reactive, h, onMounted, onBeforeUnmount } from 'vue'
 
 const { getFormattedPercent, getFormattedFloat, getFormattedCurrency } =
   getMeta('CRM Lead')
-const { makeCall } = globalStore()
+const { makeCall, $socket } = globalStore()
 const { getUser } = usersStore()
 const { getLeadStatus } = statusesStore()
 const { on } = useBroadcast()
@@ -324,6 +324,22 @@ const loadMore = ref(1)
 const triggerResize = ref(1)
 const updatedPageCount = ref(20)
 const viewControls = ref(null)
+
+onMounted(() => {
+  if ($socket) {
+    $socket.on('crm_lead_update', () => {
+      if (leads.value && typeof leads.value.reload === 'function') {
+        leads.value.reload()
+      }
+    })
+  }
+})
+
+onBeforeUnmount(() => {
+  if ($socket) {
+    $socket.off('crm_lead_update')
+  }
+})
 
 function getRow(name, field) {
   function getValue(value) {

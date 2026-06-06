@@ -1,8 +1,4 @@
-# Copyright (c) 2023, Frappe Technologies Pvt. Ltd. and contributors
-# For license information, please see license.txt
-
 import json
-
 import frappe
 from frappe import _
 from frappe.desk.form.assign_to import add as assign
@@ -494,6 +490,13 @@ class CRMLead(Document):
 			"title_field": "lead_name",
 			"kanban_fields": '["organization", "email", "mobile_no", "_assign", "modified"]',
 		}
+
+	def on_update(self):
+		frappe.publish_realtime("crm_lead_update", {"lead": self.name})
+
+	def after_insert(self):
+		frappe.publish_realtime("crm_lead_update", {"lead": self.name})
+
 
 
 @frappe.whitelist()

@@ -52,6 +52,18 @@ def sort_options(doctype: str):
 
 
 @frappe.whitelist()
+def get_unique_flags():
+	flags = frappe.get_all(
+		"CRM Lead",
+		fields=["call_flag"],
+		filters={"call_flag": ["is", "set"]},
+		distinct=True,
+		pluck="call_flag",
+	)
+	return [f for f in flags if f]
+
+
+@frappe.whitelist()
 def get_filterable_fields(doctype: str):
 	allowed_fieldtypes = [
 		"Check",

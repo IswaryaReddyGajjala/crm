@@ -1322,6 +1322,8 @@ defineExpose({
   viewsDropdownOptions,
   currentView,
   updateSelections,
+  updateFilter,
+  updateSort,
 })
 
 // Watchers

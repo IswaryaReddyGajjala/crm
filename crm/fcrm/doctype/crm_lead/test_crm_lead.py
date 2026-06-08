@@ -507,6 +507,19 @@ class TestCRMLead(IntegrationTestCase):
 		self.assertIn("Administrator", deal_assignees)
 		self.assertIn("crm.user1@example.com", deal_assignees)
 
+	def test_get_unique_flags(self):
+		"""Test that get_unique_flags returns list of unique flags"""
+		from crm.api.doc import get_unique_flags
+
+		create_lead(first_name="Lead 1", call_flag="Spam")
+		create_lead(first_name="Lead 2", call_flag="Follow Up")
+		create_lead(first_name="Lead 3", call_flag="Spam")
+
+		flags = get_unique_flags()
+		self.assertIn("Spam", flags)
+		self.assertIn("Follow Up", flags)
+		self.assertEqual(len([f for f in flags if f == "Spam"]), 1)
+
 
 def create_lead(**kwargs):
 	"""Helper function to create a CRM Lead for testing"""

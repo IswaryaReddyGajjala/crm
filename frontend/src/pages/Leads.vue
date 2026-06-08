@@ -26,6 +26,8 @@
     :filters="{ converted: 0 }"
     :options="{
       allowedViews: ['list', 'group_by', 'kanban'],
+      hideFilterButton: true,
+      hideSortButton: true,
     }"
   />
   <div 

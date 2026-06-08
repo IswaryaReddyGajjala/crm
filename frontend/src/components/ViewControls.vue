@@ -7,6 +7,7 @@
       <div class="flex items-center justify-between gap-2 overflow-x-auto">
         <div class="flex gap-2">
           <Filter
+            v-if="!options?.hideFilterButton"
             v-model="list"
             :doctype="doctype"
             :default_filters="filters"
@@ -29,7 +30,7 @@
             @click="reload()"
           />
           <SortBy
-            v-if="route.params.viewType !== 'kanban'"
+            v-if="route.params.viewType !== 'kanban' && !options?.hideSortButton"
             v-model="list"
             :doctype="doctype"
             :hideLabel="isMobileView"
@@ -168,13 +169,14 @@
           @update="updateGroupBy"
         />
         <Filter
+          v-if="!options?.hideFilterButton"
           v-model="list"
           :doctype="doctype"
           :default_filters="filters"
           @update="updateFilter"
         />
         <SortBy
-          v-if="route.params.viewType !== 'kanban'"
+          v-if="route.params.viewType !== 'kanban' && !options?.hideSortButton"
           v-model="list"
           :doctype="doctype"
           @update="updateSort"

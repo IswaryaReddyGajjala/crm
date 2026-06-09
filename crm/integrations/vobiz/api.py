@@ -22,6 +22,7 @@ def get_vobiz_credentials():
 		"number": agent.vobiz_number,
 		"appId": vobiz_settings.app_id,
 		"appSecret": vobiz_settings.get_password("api_password") if vobiz_settings.api_password else "",
+		"websocketUrlOverride": vobiz_settings.websocket_url_override,
 	}
 
 

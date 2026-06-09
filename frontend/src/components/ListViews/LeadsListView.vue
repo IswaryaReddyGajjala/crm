@@ -214,10 +214,11 @@
     :options="{
       rowCount: options.rowCount,
       totalCount: options.totalCount,
+      pageLengthOptions: [20, 50, 100, 250, 500],
     }"
     @loadMore="emit('loadMore')"
   />
-  <ListBulkActions ref="listBulkActionsRef" v-model="list" doctype="CRM Lead" />
+  <ListBulkActions ref="listBulkActionsRef" v-model="list" doctype="CRM Lead" :options="{ hideDelete: true, hideEdit: true }" />
 </template>
 
 <script setup>

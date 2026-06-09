@@ -110,45 +110,99 @@ def sync_telephony_call_logs():
 					leads_created_count += 1
 	
 			if lead_doc:
-				# Map Campaign Name to Organization
-				campaign_name = (log.get("campaign_info") or {}).get("name")
-				if campaign_name:
-					lead_doc.organization = campaign_name
-					
-				# Map Direction (inbound/outbound)
-				direction_val = log.get("direction")
-				if direction_val:
-					lead_doc.direction = direction_val.lower()
-					
-				# Map Date and Time
+				# Check if a more recent call log exists in the DB for this lead
+				more_recent_exists = False
 				start_time_raw = (log.get("timestamps") or {}).get("start")
-				if start_time_raw:
-					import pytz
-					dt = frappe.utils.to_datetime(start_time_raw)
-					if dt:
-						if dt.tzinfo is None:
-							dt = pytz.utc.localize(dt)
-						system_tz = pytz.timezone(frappe.utils.get_system_timezone())
-						local_dt = dt.astimezone(system_tz)
-						lead_doc.call_date = local_dt.strftime("%Y-%m-%d")
-						lead_doc.call_time = local_dt.strftime("%H:%M:%S")
+				if start_time_raw and not is_new_lead:
+					start_time_dt = frappe.utils.to_datetime(start_time_raw)
+					more_recent_exists = frappe.db.sql(
+						"""
+						select cl.name
+						from `tabCRM Call Log` cl
+						left join `tabDynamic Link` dl on dl.parent = cl.name and dl.parenttype = 'CRM Call Log'
+						where cl.start_time > %s
+						  and cl.name != %s
+						  and (
+						    (cl.reference_doctype = 'CRM Lead' and cl.reference_docname = %s)
+						    or (dl.link_doctype = 'CRM Lead' and dl.link_name = %s)
+						  )
+						limit 1
+						""",
+						(start_time_dt, call_id, lead_doc.name, lead_doc.name),
+					)
+
+				# Map Direction (inbound/outbound): set to inbound if lead has any inbound call log (or this current log is inbound)
+				new_direction = "outbound"
+				is_curr_inbound = log.get("direction") == "inbound"
+				if is_curr_inbound:
+					new_direction = "inbound"
+				else:
+					has_inbound = frappe.db.sql(
+						"""
+						select cl.name
+						from `tabCRM Call Log` cl
+						left join `tabDynamic Link` dl on dl.parent = cl.name and dl.parenttype = 'CRM Call Log'
+						where cl.type = 'Incoming'
+						  and cl.name != %s
+						  and (
+						    (cl.reference_doctype = 'CRM Lead' and cl.reference_docname = %s)
+						    or (dl.link_doctype = 'CRM Lead' and dl.link_name = %s)
+						  )
+						limit 1
+						""",
+						(call_id, lead_doc.name, lead_doc.name),
+					)
+					if has_inbound:
+						new_direction = "inbound"
 						
-				# Map Duration
-				duration_val = (log.get("timestamps") or {}).get("duration_sec")
-				if duration_val is not None:
-					lead_doc.call_duration = int(duration_val)
-					
-				# Map Flags
-				flag_val = (log.get("analysis") or {}).get("flag")
-				if flag_val:
-					lead_doc.call_flag = flag_val
-					
+				direction_changed = lead_doc.direction != new_direction
+				if direction_changed:
+					lead_doc.direction = new_direction
+
+				lead_details_updated = False
+				if not more_recent_exists:
+					# Map Campaign Name to Organization
+					campaign_name = (log.get("campaign_info") or {}).get("name")
+					if campaign_name and lead_doc.organization != campaign_name:
+						lead_doc.organization = campaign_name
+						lead_details_updated = True
+						
+					# Map Date and Time
+					if start_time_raw:
+						import pytz
+						dt = frappe.utils.to_datetime(start_time_raw)
+						if dt:
+							if dt.tzinfo is None:
+								dt = pytz.utc.localize(dt)
+							system_tz = pytz.timezone(frappe.utils.get_system_timezone())
+							local_dt = dt.astimezone(system_tz)
+							call_date_val = local_dt.strftime("%Y-%m-%d")
+							call_time_val = local_dt.strftime("%H:%M:%S")
+							if lead_doc.call_date != call_date_val or lead_doc.call_time != call_time_val:
+								lead_doc.call_date = call_date_val
+								lead_doc.call_time = call_time_val
+								lead_details_updated = True
+							
+					# Map Duration
+					duration_val = (log.get("timestamps") or {}).get("duration_sec")
+					if duration_val is not None:
+						duration_val_int = int(duration_val)
+						if lead_doc.call_duration != duration_val_int:
+							lead_doc.call_duration = duration_val_int
+							lead_details_updated = True
+						
+					# Map Flags
+					flag_val = (log.get("analysis") or {}).get("flag")
+					if flag_val and lead_doc.call_flag != flag_val:
+						lead_doc.call_flag = flag_val
+						lead_details_updated = True
+
 				# Save Lead
 				if is_new_lead:
 					lead_doc.insert(ignore_permissions=True)
 					target_doctype = "CRM Lead"
 					target_docname = lead_doc.name
-				else:
+				elif direction_changed or lead_details_updated:
 					lead_doc.save(ignore_permissions=True)
 					
 				updated_leads.add(lead_doc.name)

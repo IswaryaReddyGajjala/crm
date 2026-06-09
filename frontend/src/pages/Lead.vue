@@ -163,14 +163,7 @@
                   @click="showFilesUploader = true"
                 />
 
-                <Button
-                  v-if="canDelete"
-                  :tooltip="__('Delete')"
-                  variant="subtle"
-                  theme="red"
-                  icon="trash-2"
-                  @click="deleteLead"
-                />
+
               </div>
               <ErrorMessage :message="__(error)" />
             </div>

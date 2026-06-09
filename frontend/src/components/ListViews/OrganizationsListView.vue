@@ -145,6 +145,7 @@
     :options="{
       rowCount: options.rowCount,
       totalCount: options.totalCount,
+      pageLengthOptions: [20, 50, 100, 250, 500],
     }"
     @loadMore="emit('loadMore')"
   />

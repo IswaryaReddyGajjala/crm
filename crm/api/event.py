@@ -53,7 +53,6 @@ def _process_event_notifications_by_interval(interval):
 		return
 
 	current_time = now_datetime()
-	current_user = frappe.session.user
 	all_events_data = frappe.db.sql(
 		"""
 		SELECT
@@ -68,23 +67,20 @@ def _process_event_notifications_by_interval(interval):
 			en.before as before_value,
 			en.time as time_of_day,
 			en.interval as notification_interval,
-			ep.email as participant_email,
 			ep_all.participant_emails_csv,
 			CASE WHEN en.parent IS NULL THEN 0 ELSE 1 END as has_custom_notifications
 		FROM `tabEvent` e
 		LEFT JOIN `tabEvent Notifications` en ON e.name = en.parent AND en.interval = %s
-		LEFT JOIN `tabEvent Participants` ep ON e.name = ep.parent AND ep.email = %s
 		LEFT JOIN (
 			SELECT parent, GROUP_CONCAT(email) AS participant_emails_csv
 			FROM `tabEvent Participants`
 			GROUP BY parent
 		) AS ep_all ON ep_all.parent = e.name
 		WHERE (e.starts_on >= %s OR (%s >= e.starts_on AND %s < e.ends_on))
-		AND (e.owner = %s OR ep.email = %s)
 		AND e.status != 'Cancelled'
 		ORDER BY e.starts_on, e.name
 	""",
-		(interval, current_user, current_time, current_time, current_time, current_user, current_user),
+		(interval, current_time, current_time, current_time),
 		as_dict=True,
 	)
 
@@ -369,4 +365,23 @@ def _format_time_remaining(before_value, interval):
 
 def _send_system_notification(notification):
 	"""Send system notification for an event"""
-	frappe.publish_realtime("event_notification", notification)
+	recipients = set()
+	if notification.get("owner"):
+		recipients.add(notification.get("owner"))
+
+	participant_emails = notification.get("event_participants") or []
+	if participant_emails:
+		recipients.update(participant_emails)
+	else:
+		event_doc = frappe.get_doc("Event", notification.get("event_name"))
+		for participant in event_doc.get("event_participants", []):
+			email = getattr(participant, "email", None)
+			if email:
+				recipients.add(email)
+
+	recipients = [email for email in recipients if email]
+	if not recipients:
+		return
+
+	for user in recipients:
+		frappe.publish_realtime("event_notification", notification, user=user)

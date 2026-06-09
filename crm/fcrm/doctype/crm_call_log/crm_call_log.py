@@ -53,6 +53,36 @@ class CRMCallLog(Document):
 		if not self.telephony_medium:
 			self.telephony_medium = "Manual"
 
+	def before_save(self):
+		self.update_lead_details()
+
+	def update_lead_details(self):
+		lead_name = self.get_linked_lead_name()
+		if lead_name:
+			lead = frappe.get_cached_doc("CRM Lead", lead_name)
+			self.lead_name = lead.lead_name
+			self.organization = lead.organization
+			self.mobile_no = lead.mobile_no
+			self.call_flag = getattr(lead, "call_flag", None)
+		else:
+			self.lead_name = None
+			self.organization = None
+			self.mobile_no = None
+			self.call_flag = None
+
+		self.direction = "inbound" if self.type == "Incoming" else "outbound"
+		
+		if self.start_time:
+			import pytz
+			dt = frappe.utils.to_datetime(self.start_time)
+			if dt:
+				if dt.tzinfo is None:
+					dt = pytz.utc.localize(dt)
+				system_tz = pytz.timezone(frappe.utils.get_system_timezone())
+				local_dt = dt.astimezone(system_tz)
+				self.call_date = local_dt.strftime("%Y-%m-%d")
+				self.call_time = local_dt.strftime("%H:%M:%S")
+
 	@staticmethod
 	def default_list_data():
 		columns = [
@@ -155,29 +185,72 @@ class CRMCallLog(Document):
 	def update_linked_lead(self):
 		lead_name = self.get_linked_lead_name()
 		if lead_name and frappe.db.exists("CRM Lead", lead_name):
+			# Map Direction: set to inbound if this lead has ANY incoming call log
+			has_inbound = False
+			if self.type == "Incoming":
+				has_inbound = True
+			else:
+				has_inbound = frappe.db.sql(
+					"""
+					select cl.name
+					from `tabCRM Call Log` cl
+					left join `tabDynamic Link` dl on dl.parent = cl.name and dl.parenttype = 'CRM Call Log'
+					where cl.type = 'Incoming'
+					  and cl.name != %s
+					  and (
+					    (cl.reference_doctype = 'CRM Lead' and cl.reference_docname = %s)
+					    or (dl.link_doctype = 'CRM Lead' and dl.link_name = %s)
+					  )
+					limit 1
+					""",
+					(self.name, lead_name, lead_name),
+				)
+			
 			lead = frappe.get_doc("CRM Lead", lead_name)
-			
-			# Map Direction
-			lead.direction = "inbound" if self.type == "Incoming" else "outbound"
-			
-			# Map Date and Time
+			new_direction = "inbound" if has_inbound else "outbound"
+			direction_changed = lead.direction != new_direction
+			if direction_changed:
+				lead.direction = new_direction
+
+			# Do not overwrite lead details with older call logs
+			more_recent_exists = False
 			if self.start_time:
-				import pytz
-				dt = frappe.utils.to_datetime(self.start_time)
-				if dt:
-					if dt.tzinfo is None:
-						dt = pytz.utc.localize(dt)
-					system_tz = pytz.timezone(frappe.utils.get_system_timezone())
-					local_dt = dt.astimezone(system_tz)
-					lead.call_date = local_dt.strftime("%Y-%m-%d")
-					lead.call_time = local_dt.strftime("%H:%M:%S")
-					
-			# Map Duration
-			if self.duration is not None:
-				lead.call_duration = int(self.duration)
+				more_recent_exists = frappe.db.sql(
+					"""
+					select cl.name
+					from `tabCRM Call Log` cl
+					left join `tabDynamic Link` dl on dl.parent = cl.name and dl.parenttype = 'CRM Call Log'
+					where cl.start_time > %s
+					  and cl.name != %s
+					  and (
+					    (cl.reference_doctype = 'CRM Lead' and cl.reference_docname = %s)
+					    or (dl.link_doctype = 'CRM Lead' and dl.link_name = %s)
+					  )
+					limit 1
+					""",
+					(self.start_time, self.name, lead_name, lead_name),
+				)
 				
-			# Save Lead
-			lead.save(ignore_permissions=True)
+			if not more_recent_exists:
+				# Map Date and Time
+				if self.start_time:
+					import pytz
+					dt = frappe.utils.to_datetime(self.start_time)
+					if dt:
+						if dt.tzinfo is None:
+							dt = pytz.utc.localize(dt)
+						system_tz = pytz.timezone(frappe.utils.get_system_timezone())
+						local_dt = dt.astimezone(system_tz)
+						lead.call_date = local_dt.strftime("%Y-%m-%d")
+						lead.call_time = local_dt.strftime("%H:%M:%S")
+						
+				# Map Duration
+				if self.duration is not None:
+					lead.call_duration = int(self.duration)
+				
+			if direction_changed or not more_recent_exists:
+				# Save Lead
+				lead.save(ignore_permissions=True)
 
 	def get_linked_lead_name(self):
 		if self.reference_doctype == "CRM Lead" and self.reference_docname:

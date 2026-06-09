@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build --base=/assets/crm/frontend/ && yarn copy-html-entry",
+    "build": "vite build --base=/assets/crm/frontend/ && npm run copy-html-entry",
     "copy-html-entry": "cp ../crm/public/frontend/index.html ../crm/www/crm.html",
     "serve": "vite preview",
     "test": "vitest",
@@ -42,6 +42,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@rolldown/binding-linux-x64-gnu": "^1.0.0-rc.15",
     "@vitest/coverage-v8": "^4.1.4",
     "autoprefixer": "^10.4.14",
     "eslint": "^10.0.2",

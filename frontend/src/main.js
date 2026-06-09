@@ -43,7 +43,7 @@ let pinia = createPinia()
 let app = createApp(App)
 
 setConfig('resourceFetcher', frappeRequest)
-app.use(FrappeUI)
+app.use(FrappeUI, { socketio: false })
 app.use(pinia)
 app.use(router)
 app.use(translationPlugin)
@@ -56,16 +56,23 @@ app.config.globalProperties.$dialog = createDialog
 
 let socket
 if (import.meta.env.DEV) {
-  frappeRequest({ url: '/api/method/crm.www.crm.get_context_for_dev' }).then(
-    (values) => {
+  frappeRequest({
+    method: 'POST',
+    url: '/api/method/crm.www.crm.get_context_for_dev',
+  })
+    .then((values) => {
       for (let key in values) {
         window[key] = values[key]
       }
+    })
+    .catch((error) => {
+      console.warn('Failed to get context for dev:', error)
+    })
+    .finally(() => {
       socket = initSocket()
       app.config.globalProperties.$socket = socket
       app.mount('#app')
-    },
-  )
+    })
 } else {
   socket = initSocket()
   app.config.globalProperties.$socket = socket

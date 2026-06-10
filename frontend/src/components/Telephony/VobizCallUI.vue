@@ -312,7 +312,7 @@ async function startupClient() {
       appId: creds.appId || null,
       appSecret: creds.appSecret || null,
       registrationDomainSocket: (() => {
-        let wsOverride = creds.websocketUrlOverride || null
+        let wsOverride = creds.websocketUrlOverride || '/vobiz-ws'
         if (wsOverride) {
           if (wsOverride.startsWith('/')) {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
